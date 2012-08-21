@@ -1,5 +1,6 @@
 function JumpnRun(cvs)
 {
+	var me = this;
 	this.cvs = cvs;
 	this.ctx = cvs.getContext('2d');
 
@@ -9,6 +10,26 @@ function JumpnRun(cvs)
 	this.tileSize = 32;
 	this.mapSize = [Math.round(cvs.width/this.tileSize), Math.round(cvs.height/this.tileSize)];
 	this.map = new Array();
+
+	this.entitys = new Array();
+
+	//mouse position
+	this.mousePos = [0.0, 0.0];
+	this.mouseClicked = [false, false]; //left and right mouse button
+
+	//mouse event listener
+	cvs.addEventListener("mousemove", function(e) {
+		me.mousePos[0] = e.offsetX;
+		me.mousePos[1] = e.offsetY;
+	});
+
+	cvs.addEventListener("mousedown", function(e) {
+		me.mouseClicked[0] = true;	
+	});
+
+	cvs.addEventListener("mouseup", function(e) {
+		me.mouseClicked[0] = false;	
+	});
 
 	//tile types
 	this.TILE_SOLID = 1;
@@ -34,12 +55,12 @@ function JumpnRun(cvs)
 		}
 	}
 
-	//testing
-	this.player = new this.entity(this);
-	this.player.pos = [40, 100];
-	this.player.canCollide = true;
-	this.player.collBox = [16, 48];
-	this.player.collBoxPos = [-8, -24];
+	/*//testing
+	this.player = new this.entity(this, "player");
+	//append player entity
+	this.entitys.push(this.player);*/
+
+	this.entitys.push(new this.entity(this, "builder"));
 
 	this.GameLoop();
 }
@@ -50,12 +71,15 @@ JumpnRun.prototype.GameLoop = function()
 	this.ctx.fillStyle = "#000000";
 	this.ctx.fillRect(0, 0, this.cvs.width, this.cvs.height);
 
-	this.player.tick();
-
-	//this.drawBox([10, 10], [20, 20], 0);
+	//tick entitys
+	for(i = 0; i < this.entitys.length; i++)
+		this.entitys[i].tick();
+	
 	this.drawMap();
 
-	this.player.render();
+	//render entitys
+	for(i = 0; i < this.entitys.length; i++)
+		this.entitys[i].render();
 
 	var me = this;
 	setTimeout(function() { me.GameLoop.apply(me); }, 1000/50);
@@ -154,21 +178,42 @@ JumpnRun.prototype.vecLen = function(vec)
 	return Math.sqrt(vec[0]*vec[0] + vec[1]*vec[1]);
 }
 
+JumpnRun.prototype.getTileAt = function(pos)
+{
+	var cur = pos;
+
+	cur[0] = Math.round(pos[0]/this.tileSize);
+	cur[1] = Math.round(pos[1]/this.tileSize);
+
+	return cur;
+}
+
 //class entity
-JumpnRun.prototype.entity = function(jnr)
+JumpnRun.prototype.entity = function(jnr, type)
 {
 	this.TYPE_PLAYER=0;
+	this.TYPE_BUILDER=1;
 
-	this.type = this.TYPE_PLAYER;
+	if(type == "player")
+		this.type = this.TYPE_PLAYER;
+	else if(type == "builder")
+		this.type = this.TYPE_BUILDER;
 	this.jnr = jnr;
 
 	//entity position and velocity
 	this.pos = [0.0, 0.0];
 	this.vel = [0.0, 0.0];
 
-	this.canCollide = false;
-	this.collBox = [0.0, 0.0];
-	this.collBoxPos = [0.0, 0.0];
+	if(this.type == this.TYPE_PLAYER)
+	{
+		this.collBox = [16, 48];
+		this.collBoxPos = [-8, -24];
+	}
+	else if(this.type == this.TYPE_BUILDER)
+	{
+		
+	}
+
 }
 
 JumpnRun.prototype.entity.prototype.render = function()
@@ -178,22 +223,42 @@ JumpnRun.prototype.entity.prototype.render = function()
 		//draw bounding box
 		this.jnr.drawBox([this.pos[0]+this.collBoxPos[0], this.pos[1]+this.collBoxPos[1]], [this.collBox[0], this.collBox[1]]);
 	}
+	else if(this.type == this.TYPE_BUILDER)
+	{
+		var fix = this.jnr.tileSize / 2.0;
+		var tilePos = this.jnr.getTileAt([this.jnr.mousePos[0]-fix, this.jnr.mousePos[1]-fix]);
+		tilePos[0] *= this.jnr.tileSize;
+		tilePos[1] *= this.jnr.tileSize;
+		this.jnr.drawBox(tilePos, [32, 32]);
+	}
 }
 
 JumpnRun.prototype.entity.prototype.tick = function()
 {
-	this.vel[0] += this.jnr.gravityVel[0];
-	this.vel[1] += this.jnr.gravityVel[1];	
-
-	//prevent endless speed
-	if(this.jnr.vecLen(this.vel) > this.jnr.maxFallSpeed)
+	if(this.type == this.TYPE_PLAYER)
 	{
-		var norm = this.jnr.normalize(this.vel);
-		this.vel = [norm[0]*this.jnr.maxFallSpeed, norm[1]*this.jnr.maxFallSpeed];	
+		this.vel[0] += this.jnr.gravityVel[0];
+		this.vel[1] += this.jnr.gravityVel[1];	
+	
+		//prevent endless speed
+		if(this.jnr.vecLen(this.vel) > this.jnr.maxFallSpeed)
+		{
+			var norm = this.jnr.normalize(this.vel);
+			this.vel = [norm[0]*this.jnr.maxFallSpeed, norm[1]*this.jnr.maxFallSpeed];	
+		}
+	
+		this.pos[0] += this.vel[0];
+		this.pos[1] += this.vel[1];
 	}
+	else if(this.type == this.TYPE_BUILDER)
+	{
+		var fix = this.jnr.tileSize / 2.0;
+		var tilePos = this.jnr.getTileAt([this.jnr.mousePos[0]-fix, this.jnr.mousePos[1]-fix]);
 
-	console.log(this.vel);
-
-	this.pos[0] += this.vel[0];
-	this.pos[1] += this.vel[1];
+		if(this.jnr.mouseClicked[0])
+		{
+			//add a block
+			this.jnr.map[tilePos[1]][tilePos[0]] = this.jnr.TILE_SOLID;
+		}
+	}
 }
