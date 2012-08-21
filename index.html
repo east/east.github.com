@@ -2,8 +2,17 @@
 <html>
 <head>
 	<title>east.github.com</title>
+	<script src='jumpnrun.js' type='text/javascript'></script>
+	<script type='text/javascript'>
+		function initGame()
+		{
+			var cvs = document.getElementById('game');
+			var jnr = new JumpnRun(cvs);
+		}
+	</script>
 </head>
-<body>
+<body onload='initGame();'>
 	<h1>Hello World!</h1>
+	<canvas id='game' width='800' height='600'></canvas>
 </body>
 </html>
