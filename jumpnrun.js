@@ -35,16 +35,13 @@ function JumpnRun(cvs)
 	this.TILE_SOLID = 1;
 	this.TILE_AIR = 0;
 
-	for(y = 0; y < this.mapSize[1]; y++)
+	for(var y = 0; y < this.mapSize[1]; y++)
 	{
 		this.map[y] = new Array();
 
-		for(x = 0; x < this.mapSize[0]; x++)
+		for(var x = 0; x < this.mapSize[0]; x++)
 		{	
 			var tile = this.TILE_AIR;
-
-			if(y == this.mapSize[1]-1)
-				tile = this.TILE_SOLID;
 
 			/*if(Math.random() > 0.5)
 				tile = this.TILE_SOLID;
@@ -61,6 +58,11 @@ function JumpnRun(cvs)
 	this.entitys.push(this.player);*/
 
 	this.entitys.push(new this.entity(this, "builder"));
+	this.entitys.push(new this.entity(this, "collide_tester"));
+
+	this.infoText = new this.entity(this, "text");
+	this.infoText.pos = [100, 50];
+	this.entitys.push(this.infoText);
 
 	this.GameLoop();
 }
@@ -71,23 +73,27 @@ JumpnRun.prototype.GameLoop = function()
 	this.ctx.fillStyle = "#000000";
 	this.ctx.fillRect(0, 0, this.cvs.width, this.cvs.height);
 
+
 	//tick entitys
-	for(i = 0; i < this.entitys.length; i++)
+	for(var i = 0; i < this.entitys.length; i++)
 		this.entitys[i].tick();
 	
 	this.drawMap();
 
 	//render entitys
-	for(i = 0; i < this.entitys.length; i++)
+	for(var i = 0; i < this.entitys.length; i++)
 		this.entitys[i].render();
 
 	var me = this;
 	setTimeout(function() { me.GameLoop.apply(me); }, 1000/50);
 }
 
-JumpnRun.prototype.drawBox = function(pos, size, type)
+JumpnRun.prototype.drawBox = function(pos, size, color)
 {
-	this.ctx.strokeStyle = "#0000FF";
+	if(color)
+		this.ctx.strokeStyle = color;
+	else
+		this.ctx.strokeStyle = "#00FF00";
 
 	this.ctx.beginPath();
 	this.ctx.moveTo(pos[0], pos[1]);
@@ -102,9 +108,9 @@ JumpnRun.prototype.drawBox = function(pos, size, type)
 
 JumpnRun.prototype.drawMap = function()
 {
-	for(y = 0; y < this.mapSize[1]; y++)
+	for(var y = 0; y < this.mapSize[1]; y++)
 	{
-		for(x = 0; x < this.mapSize[0]; x++)
+		for(var x = 0; x < this.mapSize[0]; x++)
 		{
 			if(this.map[y][x] == this.TILE_SOLID)
 				this.drawBox([x*this.tileSize, y*this.tileSize], [this.tileSize, this.tileSize]);	
@@ -126,7 +132,7 @@ JumpnRun.prototype.boxCollide = function(rpos1, rsize1, rpos2, rsize2)
 {
 	//check wether two rectangles collide
 	
-	for(i = 0; i < 2; i++)
+	for(var i = 1; i < 2; i++)
 	{
 		var cur_pos;
 		var cur_size;
@@ -135,31 +141,31 @@ JumpnRun.prototype.boxCollide = function(rpos1, rsize1, rpos2, rsize2)
 		
 		if(i == 0)
 		{
-			cur_pos = rpos1;
-			cur_size = rsize1;
-			rect_pos = rpos2;
-			rect_size = rsize2;
+			cur_pos = [rpos1[0], rpos1[1]];
+			cur_size = [rsize1[0], rsize1[1]];
+			rect_pos = [rpos2[0], rpos2[1]];
+			rect_size = [rsize2[0], rsize2[1]];
 		}
 		else
 		{
-			cur_pos = rpos2;
-			cur_size = rsize2;
-			rect_pos = rpos1;
-			rect_size = rsize1;	
+			cur_pos = [rpos2[0], rpos2[1]];
+			cur_size = [rsize2[0], rsize2[1]];
+			rect_pos = [rpos1[0], rpos1[1]];
+			rect_size = [rsize1[0], rsize1[1]];
 		}
 
 		if(this.inRect(cur_pos, rect_pos, rect_size))
 			return true;
 		
-		cur_pos[0] += rsize1[0];
+		cur_pos[0] += cur_size[0];
 		if(this.inRect(cur_pos, rect_pos, rect_size))
 			return true;
 	
-		cur_pos[1] += rsize1[1];
+		cur_pos[1] += cur_size[1];
 		if(this.inRect(cur_pos, rect_pos, rect_size))
 			return true;
 	
-		cur_pos[0] -= rsize1[0];
+		cur_pos[0] -= cur_size[0];
 		if(this.inRect(cur_pos, rect_pos, rect_size))
 			return true;
 	}
@@ -188,16 +194,28 @@ JumpnRun.prototype.getTileAt = function(pos)
 	return cur;
 }
 
+JumpnRun.prototype.getTilePos = function(tile)
+{
+	return [tile[1]*this.tileSize, tile[0]*this.tileSize];
+}
+
 //class entity
 JumpnRun.prototype.entity = function(jnr, type)
 {
 	this.TYPE_PLAYER=0;
 	this.TYPE_BUILDER=1;
+	this.TYPE_COLLIDE_TESTER=2;
+	this.TYPE_TEXT=3;
 
 	if(type == "player")
 		this.type = this.TYPE_PLAYER;
 	else if(type == "builder")
 		this.type = this.TYPE_BUILDER;
+	else if(type == "collide_tester")
+		this.type = this.TYPE_COLLIDE_TESTER;
+	else if(type == "text")
+		this.type = this.TYPE_TEXT;
+
 	this.jnr = jnr;
 
 	//entity position and velocity
@@ -209,11 +227,12 @@ JumpnRun.prototype.entity = function(jnr, type)
 		this.collBox = [16, 48];
 		this.collBoxPos = [-8, -24];
 	}
-	else if(this.type == this.TYPE_BUILDER)
+	else if(this.type == this.TYPE_COLLIDE_TESTER)
 	{
-		
+		this.bSize = [16, 48];
 	}
-
+	else if(this.type == this.TYPE_TEXT)
+		this.text = "<empty>";
 }
 
 JumpnRun.prototype.entity.prototype.render = function()
@@ -230,6 +249,18 @@ JumpnRun.prototype.entity.prototype.render = function()
 		tilePos[0] *= this.jnr.tileSize;
 		tilePos[1] *= this.jnr.tileSize;
 		this.jnr.drawBox(tilePos, [32, 32]);
+	}
+	else if(this.type == this.TYPE_COLLIDE_TESTER)
+	{
+		this.jnr.drawBox(this.jnr.mousePos, [this.bSize[0], this.bSize[1]], this.collide ? "#ff0000" : null);
+	}
+	else if(this.type == this.TYPE_TEXT)
+	{
+		//render text
+		this.jnr.ctx.font = "15pt Arial";
+		this.jnr.ctx.textAlign = "center";
+		this.jnr.ctx.fillStyle = "#0000ff";	
+		this.jnr.ctx.fillText(this.text, this.pos[0], this.pos[1]);
 	}
 }
 
@@ -260,5 +291,28 @@ JumpnRun.prototype.entity.prototype.tick = function()
 			//add a block
 			this.jnr.map[tilePos[1]][tilePos[0]] = this.jnr.TILE_SOLID;
 		}
+	}
+	else if(this.type == this.TYPE_COLLIDE_TESTER)
+	{
+		var rectPos = [this.jnr.mousePos[0], this.jnr.mousePos[1]];
+		var num = 0;
+		var collides = 0;
+
+		for(var y = 0; y < this.jnr.mapSize[1]; y++)
+		{
+			for(var x = 0; x < this.jnr.mapSize[0]; x++)
+			{
+				if(this.jnr.map[y][x] != this.jnr.TILE_SOLID)
+					continue;
+				var pos = this.jnr.getTilePos([y, x]);
+				
+				if(this.jnr.boxCollide(pos, [this.jnr.tileSize, this.jnr.tileSize], rectPos, this.bSize))
+					collides++;
+				num++; //number of coll checks
+			}
+		}
+
+		this.collide = collides > 0;
+		this.jnr.infoText.text = collides;
 	}
 }
