@@ -13,6 +13,14 @@ function JumpnRun(cvs)
 
 	this.entitys = new Array();
 
+	//eventhandler
+	this.events = new Array();
+	
+	//keyboard
+	this.keys = new Array(256);
+	for(var i = 0; i < 256; i++)
+		this.keys[i] = false; //disable all keys
+
 	//mouse position
 	this.mousePos = [0.0, 0.0];
 	this.mouseClicked = [false, false]; //left and right mouse button
@@ -28,7 +36,19 @@ function JumpnRun(cvs)
 	});
 
 	cvs.addEventListener("mouseup", function(e) {
-		me.mouseClicked[0] = false;	
+		me.mouseClicked[0] = false;
+	});
+
+	window.addEventListener("keydown", function(e) {
+		this.keys[e.keyCode] = true;
+	});
+
+	window.addEventListener("keyup", function(e) {
+		this.keys[e.keyCode] = false;
+	});
+
+	window.addEventListener("keypress", function(e) {
+		me.onEvent("keypress", e);
 	});
 
 	//tile types
@@ -52,19 +72,46 @@ function JumpnRun(cvs)
 		}
 	}
 
-	/*//testing
+	//testing
 	this.player = new this.entity(this, "player");
 	//append player entity
-	this.entitys.push(this.player);*/
+	this.entitys.push(this.player);
 
 	this.entitys.push(new this.entity(this, "builder"));
-	this.entitys.push(new this.entity(this, "collide_tester"));
+	//this.entitys.push(new this.entity(this, "collide_tester"));
 
 	this.infoText = new this.entity(this, "text");
 	this.infoText.pos = [100, 50];
 	this.entitys.push(this.infoText);
 
+	//testing event
 	this.GameLoop();
+}
+
+JumpnRun.prototype.addEventListener = function(eventName, callback)
+{
+	this.events.push([eventName, callback]);
+}
+
+JumpnRun.prototype.remEventListener = function(eventName, callback)
+{
+	var oldEvents = this.events;
+	this.events = new Array();
+
+	for(var i = 0; i < this.events.length; i++)
+	{
+		if(!(oldEvents[i][0] == eventName && oldEvents[i][1] == callback))
+			this.events.push(oldEvents[i]);
+	}
+}
+
+JumpnRun.prototype.onEvent = function(eventName, param)
+{
+	for(var i = 0; i < this.events.length; i++)
+	{
+		if(this.events[i][0] == eventName)
+			this.events[i][1](param);
+	}
 }
 
 JumpnRun.prototype.GameLoop = function()
@@ -199,9 +246,31 @@ JumpnRun.prototype.getTilePos = function(tile)
 	return [tile[1]*this.tileSize, tile[0]*this.tileSize];
 }
 
+JumpnRun.prototype.distance = function(pos1, pos2)
+{
+	var cur = [pos2[0]-pos1[0], pos2[1]-pos1[1]];
+	return Math.sqrt(Math.abs(cur[0]*cur[0]+cur[1]*cur[1]));
+}
+
+JumpnRun.prototype.mix = function(pos1, pos2, a)
+{
+	var dist = this.distance(pos1, pos2);
+	var vec = [pos2[0]-pos1[0], pos2[1]-pos1[1]];
+
+	vec = this.normalize(vec);
+
+	dist *= a;
+
+	vec[0] *= dist;
+	vec[1] *= dist;
+
+	return [pos1[0]+vec[0], pos1[1]+vec[1]];
+}
+
 //class entity
 JumpnRun.prototype.entity = function(jnr, type)
 {
+	var me = this;
 	this.TYPE_PLAYER=0;
 	this.TYPE_BUILDER=1;
 	this.TYPE_COLLIDE_TESTER=2;
@@ -218,14 +287,30 @@ JumpnRun.prototype.entity = function(jnr, type)
 
 	this.jnr = jnr;
 
+	this.physics = false;
+
 	//entity position and velocity
 	this.pos = [0.0, 0.0];
 	this.vel = [0.0, 0.0];
 
 	if(this.type == this.TYPE_PLAYER)
 	{
+		this.jnr.addEventListener("keypress", function(e) {
+			if(e.keyCode == 98) //'b'
+			{
+				//reset player position
+				me.pos = [100, 40];
+				me.vel = [0.0, 0.0];
+			}
+			else if(e.keyCode == 97)
+				me.pos[0] -= 16;
+			else if(e.keyCode == 99)
+				me.pos[0] += 16;
+		});
+
 		this.collBox = [16, 48];
 		this.collBoxPos = [-8, -24];
+		this.physics = true;
 	}
 	else if(this.type == this.TYPE_COLLIDE_TESTER)
 	{
@@ -237,12 +322,13 @@ JumpnRun.prototype.entity = function(jnr, type)
 
 JumpnRun.prototype.entity.prototype.render = function()
 {
-	if(this.type == this.TYPE_PLAYER)
+	if(this.physics)
 	{
 		//draw bounding box
 		this.jnr.drawBox([this.pos[0]+this.collBoxPos[0], this.pos[1]+this.collBoxPos[1]], [this.collBox[0], this.collBox[1]]);
 	}
-	else if(this.type == this.TYPE_BUILDER)
+
+	if(this.type == this.TYPE_BUILDER)
 	{
 		var fix = this.jnr.tileSize / 2.0;
 		var tilePos = this.jnr.getTileAt([this.jnr.mousePos[0]-fix, this.jnr.mousePos[1]-fix]);
@@ -264,9 +350,67 @@ JumpnRun.prototype.entity.prototype.render = function()
 	}
 }
 
+JumpnRun.prototype.entity.prototype.collides = function(curPos)
+{
+	var collide = false;
+	for(var y = 0; y < this.jnr.mapSize[1]; y++)
+	{
+		for(var x = 0; x < this.jnr.mapSize[0]; x++)
+		{
+			if(this.jnr.map[y][x] != this.jnr.TILE_SOLID)
+				continue;
+			
+			var ePos = [curPos[0]+this.collBoxPos[0], curPos[1]+this.collBoxPos[1]];
+			var eSize = [this.collBox[0], this.collBox[1]];
+			var tilePos = this.jnr.getTilePos([y, x]);
+
+			if(this.jnr.boxCollide(ePos, eSize, tilePos, [this.jnr.tileSize, this.jnr.tileSize]))
+				collide = true;	
+		}
+	}
+
+	return collide;
+}
+
+JumpnRun.prototype.entity.prototype.move = function()
+{
+	var dist = this.jnr.distance(this.pos, [this.pos[0]+this.vel[0], this.pos[1]+this.vel[1]]);
+	var end = dist;
+	var lastPos = this.pos;
+
+	var collide = false;
+	for(var i = 0; i < end; i++)
+	{
+		var curPos = this.jnr.mix(this.pos, [this.pos[0]+this.vel[0], this.pos[1]+this.vel[1]], i/dist);
+
+		if(this.collides(curPos))
+		{
+			collide = true;
+			break;
+		}
+
+		lastPos = curPos;
+	}
+
+	this.jnr.infoText.text = collide ? "yes" : "no";
+
+	if(collide)
+	{
+		//use the previous position
+		this.pos[0] = lastPos[0];	
+		this.pos[1] = lastPos[1];
+		this.vel = [0.0, 0.0]; //reset velocity
+	}
+	else
+	{
+		this.pos[0] += this.vel[0];
+		this.pos[1] += this.vel[1];
+	}
+}
+
 JumpnRun.prototype.entity.prototype.tick = function()
 {
-	if(this.type == this.TYPE_PLAYER)
+	if(this.physics)
 	{
 		this.vel[0] += this.jnr.gravityVel[0];
 		this.vel[1] += this.jnr.gravityVel[1];	
@@ -278,10 +422,29 @@ JumpnRun.prototype.entity.prototype.tick = function()
 			this.vel = [norm[0]*this.jnr.maxFallSpeed, norm[1]*this.jnr.maxFallSpeed];	
 		}
 	
-		this.pos[0] += this.vel[0];
-		this.pos[1] += this.vel[1];
+		this.move();
+		
+		/*var collide = false;
+		//testing: collision check
+		for(var y = 0; y < this.jnr.mapSize[1]; y++)
+		{
+			for(var x = 0; x < this.jnr.mapSize[0]; x++)
+			{
+				if(this.jnr.map[y][x] != this.jnr.TILE_SOLID)
+					continue;
+
+				var ePos = [this.pos[0]+this.collBoxPos[0], this.pos[1]+this.collBoxPos[1]];
+				var eSize = [this.collBox[0], this.collBox[1]];
+				var tilePos = this.jnr.getTilePos([y, x]);
+	
+
+				if(this.jnr.boxCollide(ePos, eSize, tilePos, [this.jnr.tileSize, this.jnr.tileSize]))
+					collide = true;	
+			}
+		}*/
 	}
-	else if(this.type == this.TYPE_BUILDER)
+	
+	if(this.type == this.TYPE_BUILDER)
 	{
 		var fix = this.jnr.tileSize / 2.0;
 		var tilePos = this.jnr.getTileAt([this.jnr.mousePos[0]-fix, this.jnr.mousePos[1]-fix]);
